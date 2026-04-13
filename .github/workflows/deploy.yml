@@ -30,8 +30,18 @@ jobs:
           
           #Rebuild green
           docker-compose up -d
-          docker-compose build backend-green
-          docker-compose up -d backend-green
+          if grep -q "backend-blue" nginx/default.conf; then
+             CURRENT="blue"
+             TARGET="green"
+          else
+             CURRENT="green"
+             TARGET="blue"
+          fi
+
+          echo "Current: $CURRENT"
+          echo "Deploying: $TARGET"
+          docker-compose build backend-$TARGET
+          docker-compose up -d backend-$TARGET
 
           sleep 5
           docker exec backend-green curl localhost:5000/api || exit 1
