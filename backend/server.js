@@ -3,7 +3,7 @@ const app = express();
 
 app.get("/api", (req,res) => {
 	res.json({
-		message: "Hello from GREEN 💚",
+		message: "Hello from CI/CD 🚀",
 		container: process.env.HOSTNAME
 	});
 });
