@@ -29,11 +29,13 @@ jobs:
           git pull origin main
           
           #Rebuild green
+          docker-compose up -d
           docker-compose build backend-green
-
           docker-compose up -d backend-green
 
+          sleep 5
+          docker exec backend-green curl localhost:5000/api || exit 1
           #Switch nginx to GREEN
           sed -i 's/backend-blue/backend-green/' nginx/default.conf
 
-          docker restart nginx
+          docker exec nginx nginx -s reload
