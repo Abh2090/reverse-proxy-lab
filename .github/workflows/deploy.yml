@@ -1,6 +1,5 @@
 name: Deploy Blue-Green
 
-
 on:
   push:
     branches:
@@ -11,42 +10,53 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
 
-    - name: Deploy to EC2
-      uses: appleboy/ssh-action@v0.1.6
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_KEY }}
-        script: |
+            cd ~/reverse-proxy-lab
 
-          cd ~/reverse-proxy-lab
+            # Pull latest code
+            git pull origin main
 
-          #Pull latest code
-          git pull origin main
-          
-          #Rebuild green
-          docker-compose up -d
-          if grep -q "backend-blue" nginx/default.conf; then
-             CURRENT="blue"
-             TARGET="green"
-          else
-             CURRENT="green"
-             TARGET="blue"
-          fi
+            # 🔍 Detect current live backend
+            if grep -q "backend-blue" nginx/default.conf; then
+              CURRENT="blue"
+              TARGET="green"
+            else
+              CURRENT="green"
+              TARGET="blue"
+            fi
 
-          echo "Current: $CURRENT"
-          echo "Deploying: $TARGET"
-          docker rm -f backend-$TARGET || true
-          docker-compose build backend-$TARGET
-          docker-compose up -d backend-$TARGET
+            echo "Current: $CURRENT"
+            echo "Deploying: $TARGET"
 
-          sleep 5
-          docker exec backend-green curl localhost:5000/api || exit 1
-          #Switch nginx to GREEN
-          sed -i 's/backend-blue/backend-green/' nginx/default.conf
+            # 🔥 Ensure nginx & frontend are running
+            docker start nginx || docker-compose up -d nginx
+            docker start frontend || docker-compose up -d frontend
 
-          docker exec nginx nginx -s reload
+            # 🔥 Remove target container (clean state)
+            docker rm -f backend-$TARGET || true
+
+            # 🔥 Build new version
+            docker-compose build backend-$TARGET
+
+            # 🔥 Start new container
+            docker-compose up -d backend-$TARGET
+
+            # 🧪 Health check
+            sleep 5
+            docker exec backend-$TARGET curl localhost:5000/api || exit 1
+
+            # 🔁 Switch traffic
+            sed -i "s/backend-$CURRENT/backend-$TARGET/" nginx/default.conf
+
+            # 🔄 Reload nginx (zero downtime)
+            docker exec nginx nginx -s reload
